@@ -3,7 +3,7 @@
 This app is a thin BYOK frontend over the OpenAI Images API plus an OCR helper over OpenAI-compatible vision input. Anything the upstream API itself supports is potentially usable here. The image UI exposes the most common controls (model, size, n, response format, concurrency, input images, mask); everything else can be passed through the **Advanced JSON** field on the generation panel and is forwarded as-is to the request body / form.
 
 
-This document lists the parameters and capabilities you can take advantage of. It applies to the official OpenAI endpoint and to any OpenAI-compatible relay (e.g. LaoZhang) that mirrors the same surface.
+This document lists the parameters and capabilities you can take advantage of. It applies to the official OpenAI endpoint and to any OpenAI-compatible relay that mirrors the same surface.
 
 > Endpoints actually called by this app:
 > ```
@@ -166,7 +166,6 @@ The Images endpoint is **not** a streaming endpoint (unlike Chat Completions). T
 Limits are imposed by the upstream, not by this app. Reference figures:
 
 - **OpenAI** — limits depend on tier; see the OpenAI dashboard.
-- **LaoZhang** (example relay) — 3000 RPM, 1,000,000 TPM, 100 concurrent per key.
 
 The Concurrency slider in this app is capped at a small number on purpose; even with very generous upstream limits, browser-side connection limits and CORS preflights make huge fan-outs unproductive.
 
