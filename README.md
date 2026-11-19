@@ -1,106 +1,117 @@
+<div align="center">
+
+<img src="public/logo.svg" alt="Image Labs OpenAI logo" width="88" height="88" />
+
 # Image Labs OpenAI
 
-A pure frontend image generation WebUI for OpenAI-compatible Images APIs.
+**A browser-only studio for OpenAI-compatible image APIs.**
+Generate, edit, analyse and batch-process images with your own API key. No backend, no account, nothing leaves your browser except the request you send.
 
-Bring your own API key and endpoint.
+[![License: MIT](https://img.shields.io/badge/license-MIT-18181b?style=flat-square)](./LICENSE)
+[![React 18](https://img.shields.io/badge/React-18-18181b?style=flat-square&logo=react)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-6-18181b?style=flat-square&logo=vite)](https://vite.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-18181b?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
+[![shadcn/ui](https://img.shields.io/badge/UI-shadcn%2Fui-18181b?style=flat-square)](https://ui.shadcn.com)
+
+[Features](#features) ·
+[Quick start](#quick-start) ·
+[Configuration](#configuration) ·
+[How it works](#how-it-works) ·
+[Security](#security) ·
+[Contributing](#contributing)
+
+<br />
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-dark.png" />
+  <img src="docs/assets/screenshot-light.png" alt="Image Labs OpenAI: prompt workbench on the left, task results on the right" width="100%" />
+</picture>
+
+</div>
 
 ## Features
 
-**Core**
+| Workspace | What it does |
+| --- | --- |
+| **Generate** | Text-to-image and image edits, with reference images, a painted or uploaded inpainting mask, model-aware size presets, and an Advanced JSON field for any parameter the UI does not expose. |
+| **Vision** | Upload images and ask a multimodal model to describe them, explain them, or extract their text. |
+| **Batch** | Run a list of prompts (one per line or pasted CSV) against shared reference images, track progress, retry failures, and export the whole batch as a ZIP. |
+| **Batch Rename** | Let a vision model name image files from their content, then download a ZIP or a Windows `.bat` pair to apply or undo the renames. |
 
-- Pure frontend, no backend required — deployable on GitHub Pages
-- Bring your own API key and API endpoint (any OpenAI-compatible relay works)
-- Supports custom model names, with on-demand model list fetching and type filtering from `GET /v1/models`
-- Image model suggestions can be filtered by type, while Vision model suggestions remain unfiltered for multimodal models
-- Supports URL and base64 image responses
-- Stores settings locally in your browser
+Across every workspace:
 
-**Four workspaces**
+- **Bring your own key and endpoint.** Works with the official OpenAI API or any OpenAI-compatible relay.
+- **Model picker** with current OpenAI image and vision models, your endpoint's live list via `GET /models`, or any custom model id.
+- **Parallel queue** with a configurable concurrency limit, cancel and retry per task.
+- **Image library** stored in IndexedDB: virtualised grid, marquee selection, ZIP export, reuse params, edit from any result.
+- **Per-task cost estimate** from OpenAI list prices (a rough reference; relays differ) and a full request/response debug view.
+- **Accessible by default:** keyboard reachable everywhere, labelled controls, visible focus, reduced-motion support, light and dark themes.
+- **Installable** as a PWA.
 
-- **Generate** — text-to-image and image-to-image (edits) with optional inpainting mask, reference images, and an Advanced JSON escape hatch for parameters not exposed in the UI
-- **Vision** — upload images and have a vision model describe them or extract text
-- **Batch** — run a list of prompts (one per line, or pasted CSV) against shared reference images and settings, then export the whole batch as a ZIP
-- **Batch Rename** — let a vision model name game-art assets from their content, then download a Windows `.bat` pair to apply or undo the renames locally
+## Quick start
 
-**Output and history**
-
-- Parallel task execution with a configurable concurrency limit
-- Image library backed by IndexedDB, with virtualized grid, marquee selection, and ZIP export
-- Per-task cost estimation based on OpenAI list pricing (rough reference only — relays will differ)
-- Per-task debug view with the full request/response, copyable as JSON
-- Automatic oldest-first cache eviction, and visible warnings when browser storage runs out
-- English / Simplified Chinese UI
-
-## Quick Start
+Requires Node.js 20 or newer.
 
 ```bash
 git clone https://github.com/kaizenics/image-labs-openai.git
-cd openai-image-webui
+cd image-labs-openai
 npm install
 npm run dev
 ```
 
-## Build
+Open the printed local URL, click **Not connected** in the top bar, and add your API base URL and key. Then write a prompt and press <kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd>.
+
+### Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server |
+| `npm run build` | Type-check and build to `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run deploy` | Build and publish `dist/` to GitHub Pages |
+
+The repo also ships a GitHub Actions workflow (`.github/workflows`) that deploys to GitHub Pages on every push to `main`.
+
+## Configuration
+
+Everything is configured in the app under **API settings** and saved to your browser's `localStorage`.
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| API base URL | `https://api.openai.com/v1` (OpenAI preset) | Any OpenAI-compatible endpoint |
+| API key | none | Stored only in this browser |
+| Image model | `gpt-image-1.5` | Also `gpt-image-2`, `gpt-image-1`, `gpt-image-1-mini`, or custom |
+| Vision model | `gpt-4.1-mini` | Any multimodal model that accepts images on `/responses` |
+| Response format | `url` | Or `b64_json` |
+| Concurrency | `3` | 1 to 10 parallel requests |
+
+Optional build-time defaults can be set in a `.env` file (see [`.env.example`](./.env.example)):
 
 ```bash
-npm run build
+VITE_DEFAULT_MODEL=gpt-image-1.5
+VITE_DEFAULT_VISION_MODEL=gpt-4.1-mini
 ```
 
-## Deploy to GitHub Pages
+> [!WARNING]
+> Never put an API key in `.env`. Vite inlines every `VITE_*` variable into the public JavaScript bundle.
 
-```bash
-npm run deploy
-```
+## How it works
 
-## Usage
-
-1. Open the app.
-2. Choose a provider preset, or enter your API Base URL manually.
-3. Enter your API Key.
-4. Enter the image model name and, if using OCR, the vision/OCR model name.
-5. Write a prompt.
-6. Choose image count, size, response format, and concurrency.
-7. Click Generate for image output, or upload images in the OCR panel and click Extract text.
-
-
-## Provider Presets
-
-The app includes quick presets for common OpenAI-compatible Images API providers:
-
-| Provider | Base URL | Default image model | Default vision/OCR model |
-| --- | --- | --- | --- |
-| OpenAI | `https://api.openai.com/v1` | `gpt-image-1` | `gpt-4.1-mini` |
-| LaoZhang API | `https://api.laozhang.ai/v1` | `gpt-image-1` | `gpt-4.1-mini` |
-| LaoZhang VIP | `https://api-vip.laozhang.ai/v1` | `gpt-image-1` | `gpt-4.1-mini` |
-
-Presets only fill the base URL, default models, and response format. You still need to bring your own API key. Any OpenAI-compatible relay (LaoZhang is just one example) works the same way — point the base URL at it and go. Use the **Fetch models** button next to the Model field to load the live model list from whichever endpoint you configured.
-
-
-For a full list of OpenAI Images API parameters that can be used with this app (including ones not exposed in the UI, passed via the Advanced JSON field), see [`docs/api-features.md`](./docs/api-features.md).
-
-For a project overview aimed at non-technical readers and reviewers, see [`docs/project-resource-guide.md`](./docs/project-resource-guide.md).
-
-## Why direct fetch instead of the OpenAI SDK?
-
-The official OpenAI JavaScript SDK can target browsers only when `dangerouslyAllowBrowser: true` is set, because browser-side usage can expose API credentials. This project is already a pure frontend BYOK tool, so it uses a small direct `fetch` wrapper against the OpenAI-compatible REST endpoint. That keeps the bundle smaller, avoids SDK-specific browser warnings, and works with custom base URLs such as relay providers.
-
-## API Format
-
-
-This app calls Images endpoints for image output, and the Responses endpoint for vision analysis output:
+The app calls the REST endpoints directly with `fetch`:
 
 ```txt
-POST {baseUrl}/images/generations     # text → image, JSON body
-POST {baseUrl}/images/edits           # image(s) + prompt → image, multipart/form-data
-POST {baseUrl}/responses              # image(s) + prompt → text, JSON body
+POST {baseUrl}/images/generations   text to image (JSON)
+POST {baseUrl}/images/edits         image(s) + prompt to image (multipart/form-data)
+POST {baseUrl}/responses            image(s) + prompt to text (JSON)
+GET  {baseUrl}/models               optional, for the model picker
 ```
 
-
-Example generation request body:
+<details>
+<summary>Example request and response</summary>
 
 ```json
 {
-  "model": "gpt-image-1",
+  "model": "gpt-image-1.5",
   "prompt": "A cute cat wearing sunglasses",
   "n": 1,
   "size": "1024x1024",
@@ -108,55 +119,60 @@ Example generation request body:
 }
 ```
 
-Edit requests are sent as `multipart/form-data` with the same logical fields plus one or more `image` parts and an optional `mask` part. The response shape is identical to generations.
-
-OCR requests are sent to `/responses` with `input_text` plus one or more base64 data URL `input_image` items. The task card displays the extracted text and supports copy/download.
-
-Supported image response formats:
-
+Both response shapes are supported:
 
 ```json
-{
-  "data": [
-    {
-      "url": "https://example.com/image.png"
-    }
-  ]
-}
+{ "data": [{ "url": "https://example.com/image.png" }] }
 ```
-
-or:
 
 ```json
-{
-  "data": [
-    {
-      "b64_json": "..."
-    }
-  ]
-}
+{ "data": [{ "b64_json": "..." }] }
 ```
 
-## Security Notice
+Edit requests send the same fields as `multipart/form-data` with one or more `image` parts and an optional `mask`. Vision requests send `input_text` plus base64 `input_image` items to `/responses`.
 
-Your API key is stored only in your browser localStorage.
+</details>
 
-This project does not include, upload, or proxy your API key. Requests are sent directly from your browser to the API endpoint you configure.
+<details>
+<summary>Why direct fetch instead of the OpenAI SDK?</summary>
 
-Do not put your API key in `.env` files.
+The official JavaScript SDK only runs in browsers with `dangerouslyAllowBrowser: true`, because browser use can expose credentials. This project is a deliberate bring-your-own-key frontend, so a small `fetch` wrapper keeps the bundle smaller, avoids SDK browser warnings, and works with any custom base URL.
 
-Vite environment variables are exposed to frontend bundles.
+</details>
 
-Do not use this app on public devices. Do not commit your API key to GitHub.
+For every Images API parameter you can pass through Advanced JSON, see [`docs/api-features.md`](./docs/api-features.md).
 
-## CORS Notice
+## Security
 
-This is a pure frontend application. It directly calls the configured API endpoint from the browser.
+- Your API key is stored in your browser's `localStorage` and sent only to the endpoint you configure. This project has no server and never proxies or collects it.
+- Anyone with access to the browser profile can read the key. Do not use the app on shared or public devices.
+- Do not commit API keys, and do not put them in `.env` files.
 
-The API provider must allow CORS requests.
+### CORS
 
-If the same request works in curl/Postman but fails in this app with `Failed to fetch`, it is likely a CORS issue.
+Because requests go straight from the browser, the API provider must allow CORS. If a request works in curl or Postman but fails here with `Failed to fetch`, CORS is the likely cause.
+
+## Tech stack
+
+[React 18](https://react.dev) · [TypeScript](https://www.typescriptlang.org) · [Vite](https://vite.dev) · [Tailwind CSS](https://tailwindcss.com) · [shadcn/ui](https://ui.shadcn.com) on [Radix](https://www.radix-ui.com) · [lucide](https://lucide.dev) icons · [Geist](https://vercel.com/font) · [i18next](https://www.i18next.com) for UI strings · [JSZip](https://stuk.github.io/jszip/) · [sonner](https://sonner.emilkowal.ski)
+
+```txt
+src/
+  api/          OpenAI-compatible request builders (images, vision, models)
+  components/   app components; ui/ holds the shadcn primitives
+  hooks/        task queue, settings, local storage
+  lib/          sizing rules, pricing, image cache, exports, helpers
+  i18n/         UI strings
+```
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+1. Fork the repo and create a branch from `main`.
+2. Run `npm run build` before opening a PR; it type-checks the whole project.
+3. Keep UI changes on the existing design tokens (`src/index.css`) and shadcn components in `src/components/ui`.
 
 ## License
 
-MIT
+[MIT](./LICENSE)
