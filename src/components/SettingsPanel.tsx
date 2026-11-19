@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, memo } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Eye, EyeOff, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { fetchModels, type ModelCapability, type ModelInfo } from "../api/openaiModels";
@@ -6,6 +6,7 @@ import { toFriendlyError } from "../lib/errors";
 import type { AppSettings, ImageResponseFormat } from "../types";
 import { Notice } from "./Notice";
 import { Field } from "./Field";
+import { ModelPicker, type ModelOption } from "./ModelPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -43,6 +44,30 @@ const PROVIDER_PRESETS: Array<{
   },
 ];
 
+// OpenAI Images API models (developers.openai.com, Nov 2026). Anything else goes through "Custom model".
+const IMAGE_MODEL_PRESETS: ModelOption[] = [
+  { id: "gpt-image-2", note: "newest" },
+  { id: "gpt-image-1.5" },
+  { id: "gpt-image-1" },
+  { id: "gpt-image-1-mini", note: "cheapest" },
+];
+
+// Multimodal models that accept image input through /responses.
+const VISION_MODEL_PRESETS: ModelOption[] = [
+  { id: "gpt-5.5", note: "newest" },
+  { id: "gpt-5" },
+  { id: "gpt-5-mini" },
+  { id: "gpt-5-nano", note: "cheapest" },
+  { id: "gpt-4.1" },
+  { id: "gpt-4.1-mini" },
+  { id: "gpt-4o" },
+  { id: "gpt-4o-mini" },
+];
+
+function fetchedOptions(list: ModelInfo[]): ModelOption[] {
+  return list.map((item) => ({ id: item.id, note: item.ownedBy || undefined }));
+}
+
 interface SettingsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -71,11 +96,6 @@ const MODEL_FILTER_OPTIONS: Array<{ value: ModelFilter; labelKey: string }> = [
   { value: "all", labelKey: "settings.models.filters.all" },
 ];
 
-const MODEL_CATEGORY_LABEL_KEYS: Record<ModelCapability, string> = {
-  image: "settings.models.filters.image",
-  "non-image": "settings.models.filters.non-image",
-};
-
 function trimSlash(url: string) {
   return url.trim().replace(/\/+$/, "");
 }
@@ -88,8 +108,6 @@ export const SettingsPanel = memo(function SettingsPanel({
   onReset,
 }: SettingsPanelProps) {
   const { t } = useTranslation();
-  const datalistId = useId();
-  const visionDatalistId = useId();
   const [modelsState, setModelsState] = useState<ModelsState>(INITIAL_MODELS_STATE);
   const [modelFilter, setModelFilter] = useState<ModelFilter>("image");
   const [showKey, setShowKey] = useState(false);
@@ -178,6 +196,12 @@ export const SettingsPanel = memo(function SettingsPanel({
         : undefined;
 
   const activePresetUrl = trimSlash(settings.baseUrl);
+  const pickerLabels = {
+    presets: t("settings.models.openaiModels"),
+    fetched: t("settings.models.endpointModels"),
+    custom: t("settings.models.custom"),
+    customPlaceholder: t("settings.models.customPlaceholder"),
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -267,28 +291,17 @@ export const SettingsPanel = memo(function SettingsPanel({
               label={t("settings.model")}
               hint={modelHint}
               error={modelsState.status === "error" ? modelsState.error : undefined}
+              id="settings-image-model"
             >
-              <Input
-                list={datalistId}
-                className="font-mono"
-                spellCheck={false}
-                placeholder="gpt-image-1"
+              <ModelPicker
+                id="settings-image-model"
                 value={settings.model}
-                onChange={(event) => onChange({ model: event.target.value })}
+                onChange={(model) => onChange({ model })}
+                presets={IMAGE_MODEL_PRESETS}
+                fetched={fetchedOptions(filteredModels)}
+                labels={pickerLabels}
               />
             </Field>
-            <datalist id={datalistId}>
-              {filteredModels.map((item) => {
-                const categoryLabel = t(MODEL_CATEGORY_LABEL_KEYS[item.category]);
-                return (
-                  <option key={`${item.category}-${item.id}`} value={item.id}>
-                    {item.ownedBy
-                      ? t("settings.models.optionWithOwner", { category: categoryLabel, owner: item.ownedBy })
-                      : categoryLabel}
-                  </option>
-                );
-              })}
-            </datalist>
 
             <div className="flex items-center gap-2">
               <Select value={modelFilter} onValueChange={(value) => setModelFilter(value as ModelFilter)}>
@@ -321,28 +334,16 @@ export const SettingsPanel = memo(function SettingsPanel({
               </Button>
             </div>
 
-            <Field label={t("settings.visionModel")} hint={t("settings.visionModelHint")}>
-              <Input
-                list={visionDatalistId}
-                className="font-mono"
-                spellCheck={false}
-                placeholder="gpt-4.1-mini"
+            <Field label={t("settings.visionModel")} hint={t("settings.visionModelHint")} id="settings-vision-model">
+              <ModelPicker
+                id="settings-vision-model"
                 value={settings.visionModel}
-                onChange={(event) => onChange({ visionModel: event.target.value })}
+                onChange={(visionModel) => onChange({ visionModel })}
+                presets={VISION_MODEL_PRESETS}
+                fetched={fetchedOptions(modelsState.list)}
+                labels={pickerLabels}
               />
             </Field>
-            <datalist id={visionDatalistId}>
-              {modelsState.list.map((item) => {
-                const categoryLabel = t(MODEL_CATEGORY_LABEL_KEYS[item.category]);
-                return (
-                  <option key={`vision-${item.category}-${item.id}`} value={item.id}>
-                    {item.ownedBy
-                      ? t("settings.models.optionWithOwner", { category: categoryLabel, owner: item.ownedBy })
-                      : categoryLabel}
-                  </option>
-                );
-              })}
-            </datalist>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("settings.responseFormat")} id="settings-response-format">

@@ -63,10 +63,14 @@ export const resources = {
         models: {
           fetching: "Fetching…",
           fetchModels: "Fetch models",
+          openaiModels: "OpenAI models",
+          endpointModels: "From your endpoint",
+          custom: "Custom model…",
+          customPlaceholder: "Type a model id",
           loaded:
             "Loaded {{total}} models ({{image}} image, {{shown}} shown). Models are grouped as image/non-image; you can still type any name manually.",
           idle:
-            "For relay providers, click Fetch models to load the live list, or just type any model name.",
+            "Pick an OpenAI model, Fetch models to add your endpoint's list, or choose Custom model to type any id.",
           optionWithOwner: "{{category}} · {{owner}}",
           filters: {
             image: "Image",
