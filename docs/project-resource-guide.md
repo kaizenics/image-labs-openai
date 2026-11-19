@@ -347,8 +347,6 @@ npm run deploy   # 等价于 build + gh-pages -d dist
 | 预设 | Base URL | 默认生图模型 | 默认视觉模型 |
 | --- | --- | --- | --- |
 | OpenAI | `https://api.openai.com/v1` | `gpt-image-1` | `gpt-4.1-mini` |
-| LaoZhang API | `https://api.laozhang.ai/v1` | `gpt-image-1` | `gpt-4.1-mini` |
-| LaoZhang VIP | `https://api-vip.laozhang.ai/v1` | `gpt-image-1` | `gpt-4.1-mini` |
 
 预设只填地址和默认模型，用户仍需自备 API Key。
 

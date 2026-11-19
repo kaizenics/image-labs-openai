@@ -41,26 +41,6 @@ const PROVIDER_PRESETS: Array<{
       responseFormat: "url",
     },
   },
-  {
-    name: "LaoZhang API",
-    descriptionKey: "settings.presets.laozhang.description",
-    settings: {
-      baseUrl: "https://api.laozhang.ai/v1",
-      model: "gpt-image-1",
-      visionModel: "gpt-4.1-mini",
-      responseFormat: "url",
-    },
-  },
-  {
-    name: "LaoZhang VIP",
-    descriptionKey: "settings.presets.laozhangVip.description",
-    settings: {
-      baseUrl: "https://api-vip.laozhang.ai/v1",
-      model: "gpt-image-1",
-      visionModel: "gpt-4.1-mini",
-      responseFormat: "url",
-    },
-  },
 ];
 
 interface SettingsPanelProps {

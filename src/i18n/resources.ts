@@ -59,12 +59,6 @@ export const resources = {
           openai: {
             description: "Official Images API",
           },
-          laozhang: {
-            description: "OpenAI-compatible relay (global)",
-          },
-          laozhangVip: {
-            description: "Backup endpoint for overseas servers",
-          },
         },
         models: {
           fetching: "Fetching…",
