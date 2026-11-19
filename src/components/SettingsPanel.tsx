@@ -37,7 +37,7 @@ const PROVIDER_PRESETS: Array<{
     descriptionKey: "settings.presets.openai.description",
     settings: {
       baseUrl: "https://api.openai.com/v1",
-      model: "gpt-image-1",
+      model: "gpt-image-1.5",
       visionModel: "gpt-4.1-mini",
       responseFormat: "url",
     },
