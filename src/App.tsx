@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FilePen, Layers, PlugZap, ScanEye, Sparkles, Trash2, type LucideIcon } from "lucide-react";
+import { Crop, FilePen, Images, Layers, PlugZap, ScanEye, Sparkles, Trash2, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { GenerationPanel } from "./components/GenerationPanel";
 import { Header } from "./components/Header";
@@ -11,9 +11,11 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { TaskQueue } from "./components/TaskQueue";
 import { VisionPanel } from "./components/VisionPanel";
 import { BatchRenamePanel } from "./components/BatchRenamePanel";
+import { ImageToolsPanel } from "./components/ImageToolsPanel";
 import { BatchGenerationPanel } from "./components/BatchGenerationPanel";
 import { StorageHealthBanner } from "./components/StorageHealthBanner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -33,11 +35,12 @@ import { useSettings } from "./hooks/useSettings";
 import { toFriendlyError } from "./lib/errors";
 import { parseAdvancedJson } from "./lib/parseAdvancedJson";
 import { stripGeminiSizeArtifacts } from "./lib/imageSizing";
-import { DEFAULT_BATCH_FORM, DEFAULT_FORM, DEFAULT_VISION_FORM, loadBatchPrompts, saveBatchPrompts } from "./lib/storage";
+import { DEFAULT_BATCH_FORM, DEFAULT_FORM, DEFAULT_VISION_FORM, STORAGE_KEYS, loadBatchPrompts, saveBatchPrompts } from "./lib/storage";
 import { modelRequiresStrictPng, prepareInputImage, toInputImageFile } from "./lib/imageInput";
 import { getCachedInputs } from "./lib/imageCache";
 import { stripInternalParams } from "./api/requestShaping";
-import { createBatchId, parsePromptList } from "./lib/promptList";
+import { enhancePromptAuto } from "./api/providers";
+import { MAX_EXPANDED_PROMPTS, createBatchId, parsePromptList } from "./lib/promptList";
 import { downloadBatchZip, getTaskBatchId } from "./lib/batchExport";
 import type { AppSettings, BatchFormState, GenerateFormState, ImageTask, InputImageFile, ReuseParamsPayload, VisionFormState } from "./types";
 
@@ -111,13 +114,14 @@ function validateVisionRequest(
 }
 
 type WorkspacePanel = "tasks" | "library";
-type WorkspaceMode = "generate" | "vision" | "rename" | "batch";
+type WorkspaceMode = "generate" | "vision" | "rename" | "batch" | "tools";
 
 const MODE_ICONS: Record<WorkspaceMode, LucideIcon> = {
   generate: Sparkles,
   vision: ScanEye,
   batch: Layers,
   rename: FilePen,
+  tools: Crop,
 };
 
 /** Build an {@link InputImageFile} from a File with a fresh object URL. */
@@ -145,7 +149,7 @@ export default function App() {
   const [batchError, setBatchError] = useState("");
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem("openai-image-webui:current-batch-id");
+      return localStorage.getItem(STORAGE_KEYS.currentBatchId);
     } catch {
       return null;
     }
@@ -155,9 +159,9 @@ export default function App() {
   useEffect(() => {
     try {
       if (currentBatchId) {
-        localStorage.setItem("openai-image-webui:current-batch-id", currentBatchId);
+        localStorage.setItem(STORAGE_KEYS.currentBatchId, currentBatchId);
       } else {
-        localStorage.removeItem("openai-image-webui:current-batch-id");
+        localStorage.removeItem(STORAGE_KEYS.currentBatchId);
       }
     } catch {
       // Ignore localStorage failures.
@@ -168,11 +172,14 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<WorkspacePanel>("tasks");
   const [activeMode, setActiveMode] = useState<WorkspaceMode>("generate");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Below the lg breakpoint the form and the results are separate screens behind a bottom bar.
+  const [mobileView, setMobileView] = useState<"create" | "results">("create");
   const outputRef = useRef<HTMLDivElement>(null);
 
   // On mobile the output sits far below the form, and on desktop a long task list can scroll it away.
   const showOutput = useCallback(() => {
     setActivePanel("tasks");
+    setMobileView("results");
     requestAnimationFrame(() => {
       const top = outputRef.current?.getBoundingClientRect().top;
       if (top !== undefined && (top < 0 || top > window.innerHeight / 2)) {
@@ -298,6 +305,7 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
     // Switch back to the generate workspace so the applied params are
     // actually visible — the form lives behind the mode switch.
     setActiveMode("generate");
+    setMobileView("create");
     setActivePanel("tasks");
     setFormError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -406,6 +414,7 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
   /** Load a generated image into the generate form as the edit source. */
   const handleEditImage = useCallback(async (imageUrl: string) => {
     setActiveMode("generate");
+    setMobileView("create");
     setFormError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -437,6 +446,23 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
       );
     }
   }, [settings.model, t]);
+
+  /** Vision output -> image prompt (describe, then remix). */
+  const handleUseAsPrompt = useCallback((text: string) => {
+    setForm((current) => ({ ...current, prompt: text }));
+    setActiveMode("generate");
+    setMobileView("create");
+    setFormError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    requestAnimationFrame(() => document.getElementById("prompt")?.focus({ preventScroll: true }));
+    toast.success(t("tasks.messages.promptLoaded"));
+  }, [t]);
+
+  const handleEnhancePrompt = useCallback(
+    (prompt: string) =>
+      enhancePromptAuto({ apiKey: settings.apiKey, baseUrl: settings.baseUrl, model: settings.visionModel, prompt }),
+    [settings.apiKey, settings.baseUrl, settings.visionModel],
+  );
 
   const handleGenerate = useCallback(() => {
     setFormError("");
@@ -512,6 +538,9 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
       if (!settings.model.trim()) throw new Error(t("errors.modelRequired"));
 
       const parsed = parsePromptList(batchForm.promptsText);
+      if (parsed.tooMany) {
+        throw new Error(t("errors.batchTooManyPrompts", { max: MAX_EXPANDED_PROMPTS }));
+      }
       if (parsed.prompts.length === 0) {
         throw new Error(t("errors.batchPromptsRequired"));
       }
@@ -573,7 +602,7 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
   const isConnected = !!settings.apiKey.trim() && !!settings.baseUrl.trim();
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <div className="flex min-h-[100dvh] flex-col max-lg:pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
       <a
         href="#prompt"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
@@ -597,15 +626,15 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
 
       <div className="flex-1 lg:grid lg:grid-cols-[minmax(380px,420px)_1fr]">
         {/* Workbench: the active input form. Sticky on desktop so the submit button never scrolls away. */}
-        <aside className="border-b bg-card lg:sticky lg:top-14 lg:flex lg:h-[calc(100dvh-3.5rem)] lg:flex-col lg:border-b-0 lg:border-r">
+        <aside className={cn("border-b bg-card lg:sticky lg:top-14 lg:flex lg:h-[calc(100dvh-3.5rem)] lg:flex-col lg:border-b-0 lg:border-r", mobileView === "results" && "max-lg:hidden")}>
           <Tabs
             value={activeMode}
             onValueChange={(value) => setActiveMode(value as WorkspaceMode)}
             className="flex min-h-0 flex-1 flex-col"
           >
             <div className="border-b px-4 py-3">
-              <TabsList className="grid h-auto w-full grid-cols-4 p-1">
-                {(["generate", "vision", "batch", "rename"] as const).map((mode) => {
+              <TabsList className="grid h-auto w-full grid-cols-5 p-1">
+                {(["generate", "vision", "batch", "rename", "tools"] as const).map((mode) => {
                   const Icon = MODE_ICONS[mode];
                   return (
                     <TabsTrigger
@@ -641,7 +670,15 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
               ) : null}
 
               <TabsContent value="generate" className="mt-0 h-full focus-visible:ring-inset focus-visible:ring-offset-0">
-                <GenerationPanel form={form} error={formError} model={settings.model} onChange={updateForm} onSubmit={handleGenerate} />
+                <GenerationPanel
+                  form={form}
+                  error={formError}
+                  model={settings.model}
+                  visionModel={settings.visionModel}
+                  onChange={updateForm}
+                  onSubmit={handleGenerate}
+                  onEnhance={handleEnhancePrompt}
+                />
               </TabsContent>
               <TabsContent value="vision" className="mt-0 h-full focus-visible:ring-inset focus-visible:ring-offset-0">
                 <VisionPanel form={visionForm} error={visionError} visionModel={settings.visionModel} onChange={updateVisionForm} onSubmit={handleAnalyzeImages} />
@@ -663,12 +700,15 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
               <TabsContent value="rename" className="mt-0 h-full focus-visible:ring-inset focus-visible:ring-offset-0">
                 <BatchRenamePanel settings={settings} />
               </TabsContent>
+              <TabsContent value="tools" className="mt-0 h-full focus-visible:ring-inset focus-visible:ring-offset-0">
+                <ImageToolsPanel />
+              </TabsContent>
             </div>
           </Tabs>
         </aside>
 
         {/* Output: tasks and the persistent image library */}
-        <main id="results" ref={outputRef} tabIndex={-1} className="min-w-0 scroll-mt-16 focus:outline-none">
+        <main id="results" ref={outputRef} tabIndex={-1} className={cn("min-w-0 scroll-mt-16 focus:outline-none", mobileView === "create" && "max-lg:hidden")}>
           <Tabs value={activePanel} onValueChange={(value) => setActivePanel(value as WorkspacePanel)}>
             <div className="sticky top-14 z-30 flex items-center justify-between gap-3 border-b bg-background/85 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:px-6">
               <TabsList>
@@ -726,6 +766,7 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
                   onClearTaskImage={clearTaskImage}
                   onReuseParams={handleReuseTask}
                   onEditImage={handleEditImage}
+                  onUseAsPrompt={handleUseAsPrompt}
                 />
               </TabsContent>
               <TabsContent value="library" className="mt-0">
@@ -750,6 +791,35 @@ const handleReuseParams = useCallback((payload: ReuseParamsPayload) => {
         onChange={setSettings}
         onReset={resetSettings}
       />
+      <nav
+        aria-label={t("workspace.mobile.label")}
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-2 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:hidden"
+      >
+        {(["create", "results"] as const).map((view) => {
+          const Icon = view === "create" ? Sparkles : Images;
+          const active = mobileView === view;
+          return (
+            <button
+              key={view}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => setMobileView(view)}
+              className={cn(
+                "relative flex h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                active ? "text-brand" : "text-muted-foreground",
+              )}
+            >
+              <Icon aria-hidden="true" className="size-5" />
+              {t(`workspace.mobile.${view}`)}
+              {view === "results" && activeTaskCount > 0 ? (
+                <span className="absolute right-[calc(50%-1.75rem)] top-1.5 min-w-4 rounded-full bg-brand px-1 text-center font-mono text-[10px] leading-4 text-brand-foreground">
+                  {activeTaskCount}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
       <ImagePreviewModal preview={preview} onNavigate={navigatePreview} onClose={closePreview} />
     </div>
   );

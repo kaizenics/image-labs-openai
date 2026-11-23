@@ -1,7 +1,8 @@
 import type { ImageCacheStats, ImageResponseFormat } from "../types";
+import { CACHE_DB_BASE_NAME, scopedKey } from "./projects";
 import { reportStorageIssue } from "./storageHealth";
 
-const DB_NAME = "openai-image-webui-cache";
+const DB_NAME = scopedKey(CACHE_DB_BASE_NAME);
 const DB_VERSION = 2;
 const STORE_NAME = "images";
 

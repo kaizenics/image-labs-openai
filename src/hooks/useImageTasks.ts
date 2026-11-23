@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { editImage, generateImage, getImageGenerationDebug } from "../api/openaiImages";
-import { analyzeImages, getVisionAnalysisDebug } from "../api/openaiVision";
+import { getImageGenerationDebug } from "../api/openaiImages";
+import { analyzeImagesAuto, editImageAuto, generateImageAuto } from "../api/providers";
+import { getVisionAnalysisDebug } from "../api/openaiVision";
 
 import {
   cacheImageFromUrl,
@@ -335,7 +336,7 @@ export function useImageTasks(settings: AppSettings) {
               );
             }
 
-            const result = await analyzeImages({
+            const result = await analyzeImagesAuto({
               apiKey: currentSettings.apiKey,
               baseUrl: currentSettings.baseUrl,
               model: task.model,
@@ -382,7 +383,7 @@ export function useImageTasks(settings: AppSettings) {
           }
 
           const result = shouldEdit
-            ? await editImage({
+            ? await editImageAuto({
                 apiKey: currentSettings.apiKey,
                 baseUrl: currentSettings.baseUrl,
                 model: task.model,
@@ -394,7 +395,7 @@ export function useImageTasks(settings: AppSettings) {
                 mask: pendingInputs!.mask,
                 signal: controller.signal,
               })
-            : await generateImage({
+            : await generateImageAuto({
                 apiKey: currentSettings.apiKey,
                 baseUrl: currentSettings.baseUrl,
                 model: task.model,

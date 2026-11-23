@@ -4,6 +4,7 @@ import {
   Bug,
   Check,
   CircleStop,
+  ClipboardCopy,
   Copy,
   Download,
   Image as ImageIcon,
@@ -15,7 +16,8 @@ import {
   Trash2,
   Wand2,
 } from "lucide-react";
-import { copyText, downloadImage } from "../lib/download";
+import { toast } from "sonner";
+import { copyImage, copyText, downloadImage } from "../lib/download";
 import { formatCostUsd } from "../lib/pricing";
 import type { ImageTask } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +71,16 @@ export const TaskGroupCard = memo(function TaskGroupCard({
   async function handleCopyDebug(task: ImageTask) {
     await copyText(formatTaskDebug(task, errorTextOf(task)));
     setMessageKey("tasks.messages.debugCopied");
+  }
+
+  async function handleCopyImageFile(task: ImageTask) {
+    if (!task.imageUrl) return;
+    try {
+      await copyImage(task.imageUrl);
+      setMessageKey("tasks.messages.imageCopied");
+    } catch {
+      toast.error(t("tasks.messages.imageCopyFailed"));
+    }
   }
 
   async function handleDownload(task: ImageTask) {
@@ -169,6 +181,7 @@ export const TaskGroupCard = memo(function TaskGroupCard({
                 {task.imageUrl ? (
                   <>
                     <IconAction label={t("tasks.actions.download")} icon={Download} onClick={() => void handleDownload(task)} />
+                    <IconAction label={t("tasks.actions.copyImage")} icon={ClipboardCopy} onClick={() => void handleCopyImageFile(task)} />
                     <IconAction
                       label={t("tasks.actions.editImage")}
                       icon={Wand2}

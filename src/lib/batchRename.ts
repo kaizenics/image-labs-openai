@@ -1,3 +1,4 @@
+import { geminiAnalyze, isGeminiNative } from "../api/geminiProvider";
 import JSZip from "jszip";
 
 export type NamingMode = "compact" | "descriptive";
@@ -131,6 +132,18 @@ export async function callAIForName(params: {
   const isDescriptive = namingMode === "descriptive";
   const prompt = isDescriptive ? DESCRIPTIVE_PROMPT : COMPACT_PROMPT;
   const detail = isDescriptive ? "auto" : "low";
+
+  if (isGeminiNative(baseUrl)) {
+    const { outputText } = await geminiAnalyze({
+      apiKey,
+      baseUrl,
+      model,
+      prompt,
+      images: [new File([imageBlob], "image", { type: imageBlob.type || "image/jpeg" })],
+      signal,
+    });
+    return sanitizeAIName(outputText, namingMode);
+  }
 
   const endpoint = `${baseUrl.trim().replace(/\/$/, "")}/responses`;
   const body = {

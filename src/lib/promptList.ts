@@ -1,8 +1,64 @@
 export interface ParsedPromptList {
+  /** Prompts after template expansion. */
   prompts: string[];
   totalLines: number;
   commentLines: number;
   emptyLines: number;
+  /** Prompt lines before expansion (variable definitions excluded). */
+  templateLines: number;
+  /** True when expansion would exceed {@link MAX_EXPANDED_PROMPTS}; `prompts` is then truncated. */
+  tooMany: boolean;
+}
+
+export const MAX_EXPANDED_PROMPTS = 500;
+
+const VARIABLE_LINE = /^\$([A-Za-z_][\w-]*)\s*=\s*(.+)$/;
+
+function splitOptions(text: string) {
+  return text.split("|").map((option) => option.trim()).filter(Boolean);
+}
+
+/**
+ * Expand prompt templates into every combination.
+ * - `{red|blue}` is an inline choice.
+ * - A line `$style = oil | pixel art` defines a variable, used as `{style}` in any prompt line.
+ * Braces that match neither are left as written. The first group varies slowest.
+ */
+export function expandPromptTemplates(lines: string[]) {
+  const variables = new Map<string, string[]>();
+  const templates: string[] = [];
+  for (const line of lines) {
+    const match = VARIABLE_LINE.exec(line);
+    if (match) variables.set(match[1], splitOptions(match[2]));
+    else templates.push(line);
+  }
+
+  const prompts: string[] = [];
+  for (const template of templates) {
+    const parts: Array<string | string[]> = [];
+    let last = 0;
+    template.replace(/\{([^{}]+)\}/g, (matched: string, inner: string, offset: number) => {
+      const options = inner.includes("|") ? splitOptions(inner) : variables.get(inner.trim());
+      if (!options?.length) return matched;
+      parts.push(template.slice(last, offset), options);
+      last = offset + matched.length;
+      return matched;
+    });
+    parts.push(template.slice(last));
+
+    const count = parts.reduce((total, part) => (typeof part === "string" ? total : total * part.length), 1);
+    if (prompts.length + count > MAX_EXPANDED_PROMPTS) {
+      return { prompts, templateLines: templates.length, tooMany: true };
+    }
+
+    let combos = [""];
+    for (const part of parts) {
+      combos = typeof part === "string" ? combos.map((combo) => combo + part) : combos.flatMap((combo) => part.map((option) => combo + option));
+    }
+    prompts.push(...combos);
+  }
+
+  return { prompts, templateLines: templates.length, tooMany: false };
 }
 
 /**
@@ -17,11 +73,11 @@ export interface ParsedPromptList {
  */
 export function parsePromptList(text: string): ParsedPromptList {
   if (!text) {
-    return { prompts: [], totalLines: 0, commentLines: 0, emptyLines: 0 };
+    return { prompts: [], totalLines: 0, commentLines: 0, emptyLines: 0, templateLines: 0, tooMany: false };
   }
 
   const rawLines = text.split(/\r?\n/);
-  const prompts: string[] = [];
+  const lines: string[] = [];
   let commentLines = 0;
   let emptyLines = 0;
 
@@ -35,11 +91,11 @@ export function parsePromptList(text: string): ParsedPromptList {
       commentLines += 1;
       continue;
     }
-    prompts.push(line);
+    lines.push(line);
   }
 
   return {
-    prompts,
+    ...expandPromptTemplates(lines),
     totalLines: rawLines.length,
     commentLines,
     emptyLines,

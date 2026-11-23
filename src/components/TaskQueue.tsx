@@ -6,6 +6,7 @@ import { groupTasks } from "../lib/taskGroups";
 import { TaskCard } from "./TaskCard";
 import { TaskGroupCard } from "./TaskGroupCard";
 import { Notice } from "./Notice";
+import { CostSummary } from "./CostSummary";
 
 const MAX_RENDERED_TASKS = 200;
 
@@ -18,6 +19,7 @@ interface TaskQueueProps {
   onClearTaskImage: (id: string) => void;
   onReuseParams: (task: ImageTask) => void;
   onEditImage: (imageUrl: string) => void;
+  onUseAsPrompt: (text: string) => void;
 }
 
 export const TaskQueue = memo(function TaskQueue({
@@ -29,6 +31,7 @@ export const TaskQueue = memo(function TaskQueue({
   onClearTaskImage,
   onReuseParams,
   onEditImage,
+  onUseAsPrompt,
 }: TaskQueueProps) {
   const { t } = useTranslation();
 
@@ -68,6 +71,8 @@ export const TaskQueue = memo(function TaskQueue({
         </div>
       ) : null}
 
+      <CostSummary tasks={tasks} />
+
       {hiddenCount > 0 ? (
         <Notice>{t("tasks.showingRecent", { shown: visibleCount, hidden: hiddenCount })}</Notice>
       ) : null}
@@ -104,6 +109,7 @@ export const TaskQueue = memo(function TaskQueue({
                 onClearImage={onClearTaskImage}
                 onReuseParams={onReuseParams}
                 onEditImage={onEditImage}
+                onUseAsPrompt={onUseAsPrompt}
               />
             ),
           )}

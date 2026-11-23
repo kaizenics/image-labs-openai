@@ -235,3 +235,45 @@ export async function analyzeImages(params: VisionAnalysisParams): Promise<Visio
     debug,
   };
 }
+
+const ENHANCE_INSTRUCTION =
+  "Rewrite the following image-generation prompt into a richer, more specific one: subject, setting, style, lighting and composition. " +
+  "Keep the user's intent and language. Reply with only the rewritten prompt, no preface, quotes or explanation.";
+
+/** Text-only call to /responses that rewrites a short prompt into a detailed one. */
+export async function enhancePrompt(params: {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  prompt: string;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const { apiKey, baseUrl, model, prompt, signal } = params;
+
+  if (!apiKey.trim()) throw new Error("API Key is required.");
+  if (!baseUrl.trim()) throw new Error("API Base URL is required.");
+  if (!model.trim()) throw new Error("Vision model is required.");
+  if (!prompt.trim()) throw new Error("Prompt is required.");
+
+  const res = await fetch(joinBaseUrl(baseUrl, "/responses"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model.trim(),
+      input: [
+        { role: "user", content: [{ type: "input_text", text: `${ENHANCE_INSTRUCTION}
+
+Prompt:
+${prompt.trim()}` }] },
+      ],
+    }),
+    signal,
+  });
+
+  const bodyText = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(readApiError(res, bodyText));
+
+  const text = extractOutputText(parseJsonResponse(bodyText));
+  if (!text) throw new Error("No text output returned.");
+  return text;
+}

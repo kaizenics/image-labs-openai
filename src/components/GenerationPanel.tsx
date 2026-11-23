@@ -10,8 +10,9 @@ import {
   toInputImageFile,
 } from "../lib/imageInput";
 import { getModelSizingProfile, getSizePresetGroupsForModel } from "../lib/imageSizing";
-import { Brush, Image as ImageIcon, Info, Sparkles, Upload, Wand2, X } from "lucide-react";
+import { Brush, Image as ImageIcon, Info, Loader2, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { MOD_KEY_LABEL, submitOnModEnter } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
 import { Notice } from "./Notice";
 import { Field } from "./Field";
 import { Chip } from "./Chip";
@@ -21,15 +22,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { STORAGE_KEYS } from "../lib/storage";
+import { usePromptLibrary } from "../hooks/usePromptLibrary";
 import { ImageDropzone } from "./ImageDropzone";
 import { MaskEditor } from "./MaskEditor";
+import { PromptLibrary } from "./PromptLibrary";
 
 const SIZE_STEP = 64;
 const MIN_SIZE = 256;
 const MAX_SIZE = 4096;
 const DEFAULT_SIZE = 1024;
 const RECENT_SIZE_LIMIT = 6;
-const RECENT_SIZE_STORAGE_KEY = "openai-image-webui:recent-sizes";
+const RECENT_SIZE_STORAGE_KEY = STORAGE_KEYS.recentSizes;
 
 
 interface GenerationPanelProps {
@@ -37,8 +42,12 @@ interface GenerationPanelProps {
   error: string;
   /** Used to decide strict PNG enforcement and multi-image warnings. */
   model?: string;
+  /** Shown in the enhance tooltip; the rewrite itself is done by `onEnhance`. */
+  visionModel?: string;
   onChange: (next: Partial<GenerateFormState>) => void;
   onSubmit: () => void;
+  /** Rewrites a prompt into a richer one. Rejects with a readable message. */
+  onEnhance: (prompt: string) => Promise<string>;
 }
 
 function roundToSizeStep(value: number, step = SIZE_STEP) {
@@ -85,6 +94,43 @@ function parseSize(value: string) {
     width: clampDimensionExact(width),
     height: clampDimensionExact(height),
   };
+}
+
+/** Outline drawn at an aspect ratio inside a square box; dashed square when there is no fixed ratio ("auto"). */
+function RatioShape({ ratio, box, className }: { ratio: number | null; box: number; className?: string }) {
+  const w = ratio ? (ratio >= 1 ? box : box * ratio) : box;
+  const h = ratio ? (ratio >= 1 ? box / ratio : box) : box;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("inline-block shrink-0 rounded-[3px] border border-current", !ratio && "border-dashed", className)}
+      style={{ width: Math.max(4, Math.round(w)), height: Math.max(4, Math.round(h)) }}
+    />
+  );
+}
+
+function ratioOfSize(size: string) {
+  const [width, height] = normalizeSize(size).split("x").map(Number);
+  return width > 0 && height > 0 ? width / height : null;
+}
+
+function ratioOfLabel(label: string) {
+  const [a, b] = label.split(":").map(Number);
+  return a > 0 && b > 0 ? a / b : null;
+}
+
+function SizeShape({ size }: { size: string }) {
+  return <RatioShape ratio={ratioOfSize(size)} box={14} className="opacity-70" />;
+}
+
+/** The preset closest in pixel area to the current size, so switching ratio keeps roughly the same resolution. */
+function closestSize(sizes: readonly string[], current: string) {
+  const area = (size: string) => {
+    const parsed = parseSize(size);
+    return parsed ? parsed.width * parsed.height : 0;
+  };
+  const target = area(current);
+  return sizes.reduce((best, size) => (Math.abs(area(size) - target) < Math.abs(area(best) - target) ? size : best), sizes[0]);
 }
 
 function greatestCommonDivisor(a: number, b: number): number {
@@ -140,7 +186,7 @@ function saveRecentSizes(sizes: string[]) {
   }
 }
 
-export const GenerationPanel = memo(function GenerationPanel({ form, error, model, onChange, onSubmit }: GenerationPanelProps) {
+export const GenerationPanel = memo(function GenerationPanel({ form, error, model, visionModel, onChange, onSubmit, onEnhance }: GenerationPanelProps) {
   const { t } = useTranslation();
   const initialParsedSize = parseSize(form.size);
   const [sliderWidth, setSliderWidth] = useState(initialParsedSize?.width ?? DEFAULT_SIZE);
@@ -153,6 +199,9 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
   const widthId = useId();
   const heightId = useId();
   const countId = useId();
+  const [enhancing, setEnhancing] = useState(false);
+  const [suggestion, setSuggestion] = useState("");
+  const { history, presets, recordPrompt, removeFromHistory, savePreset, removePreset } = usePromptLibrary();
 
   const strictPng = modelRequiresStrictPng(model ?? "");
   const supportsMultiImage = modelLikelySupportsMultipleImages(model ?? "");
@@ -174,6 +223,8 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
 
   const currentSize = useMemo(() => `${sliderWidth}x${sliderHeight}`, [sliderHeight, sliderWidth]);
   const currentRatioLabel = useMemo(() => getRatioLabel(currentSize), [currentSize]);
+
+  const activePresetGroup = sizePresetGroups.find((group) => group.sizes.some(isSizeActive));
 
   function isSizeActive(size: string) {
     const normalizedCurrent = normalizeSize(form.size);
@@ -217,8 +268,21 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    recordPrompt(form.prompt);
     rememberSize(form.size);
     onSubmit();
+  }
+
+  async function handleEnhance() {
+    setEnhancing(true);
+    setSuggestion("");
+    try {
+      setSuggestion(await onEnhance(form.prompt));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errors.unknown"));
+    } finally {
+      setEnhancing(false);
+    }
   }
 
   async function handleAddInputImages(files: FileList | File[]) {
@@ -328,7 +392,40 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
           <p className="text-sm text-muted-foreground">{t("generation.subtitle")}</p>
         </div>
 
-        <Field label={t("generation.prompt")} id="prompt">
+        <Field
+          label={t("generation.prompt")}
+          id="prompt"
+          action={
+            <div className="flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-xs"
+                disabled={enhancing || !form.prompt.trim()}
+                title={t("generation.enhance.hint", { model: visionModel || "-" })}
+                onClick={() => void handleEnhance()}
+              >
+                {enhancing ? <Loader2 aria-hidden="true" className="!size-3.5 animate-spin" /> : <Wand2 aria-hidden="true" className="!size-3.5" />}
+                {enhancing ? t("generation.enhance.working") : t("generation.enhance.button")}
+              </Button>
+              <PromptLibrary
+              history={history}
+              presets={presets}
+              canSave={form.prompt.trim().length > 0}
+              onApplyPrompt={(prompt) => onChange({ prompt })}
+              onApplyPreset={(preset) => onChange({ prompt: preset.prompt, size: preset.size, advancedJson: preset.advancedJson })}
+              onSave={() => {
+                if (savePreset({ prompt: form.prompt, size: form.size, advancedJson: form.advancedJson })) {
+                  toast.success(t("generation.promptLibrary.saved"));
+                }
+              }}
+              onRemovePreset={removePreset}
+              onRemoveHistory={removeFromHistory}
+              />
+            </div>
+          }
+        >
           <Textarea
             className="min-h-32 resize-y leading-relaxed"
             placeholder={t("generation.promptPlaceholder")}
@@ -337,6 +434,32 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
             onKeyDown={submitOnModEnter}
           />
         </Field>
+
+        {suggestion ? (
+          <Notice
+            title={t("generation.enhance.suggestion")}
+            action={
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    onChange({ prompt: suggestion });
+                    setSuggestion("");
+                  }}
+                >
+                  {t("generation.enhance.accept")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSuggestion("")}>
+                  {t("generation.enhance.dismiss")}
+                </Button>
+              </div>
+            }
+          >
+            <span className="whitespace-pre-wrap break-words">{suggestion}</span>
+          </Notice>
+        ) : null}
 
         <ImageDropzone
           images={form.inputImages}
@@ -555,20 +678,44 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
               <p className="text-sm font-medium">{t("generation.commonSizes")}</p>
               <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t("generation.commonSizesHint")}</p>
             </div>
-            <dl className="grid gap-2">
-              {sizePresetGroups.map((group) => (
-                <div key={group.ratio} className="grid grid-cols-[3rem_1fr] items-start gap-2">
-                  <dt className="pt-1.5 font-mono text-xs text-muted-foreground">{group.ratio}</dt>
-                  <dd className="flex flex-wrap gap-1.5">
-                    {group.sizes.map((size) => (
-                      <Chip key={size} active={isSizeActive(size)} onClick={() => applySize(size)}>
-                        {size}
-                      </Chip>
-                    ))}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <div role="group" aria-label={t("generation.commonSizes")} className="grid grid-cols-[repeat(auto-fill,minmax(4.25rem,1fr))] gap-2">
+              {sizePresetGroups.map((group) => {
+                const selected = activePresetGroup?.ratio === group.ratio;
+                return (
+                  <button
+                    key={group.ratio}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => applySize(closestSize(group.sizes, currentSize))}
+                    className={cn(
+                      "flex h-[4.5rem] flex-col items-center justify-center gap-2 rounded-lg border text-xs font-medium transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                      selected
+                        ? "border-brand bg-brand/10 text-foreground"
+                        : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="grid size-8 place-items-center">
+                      <RatioShape
+                        ratio={ratioOfLabel(group.ratio)}
+                        box={28}
+                        className={cn("border-2", selected ? "border-brand bg-brand/20" : "border-muted-foreground/60")}
+                      />
+                    </span>
+                    {group.ratio === "auto" ? t("generation.autoSize") : group.ratio}
+                  </button>
+                );
+              })}
+            </div>
+            {activePresetGroup && activePresetGroup.sizes.length > 1 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {activePresetGroup.sizes.map((size) => (
+                  <Chip key={size} active={isSizeActive(size)} onClick={() => applySize(size)}>
+                    {size}
+                  </Chip>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="grid gap-2">
@@ -577,6 +724,7 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
               <div className="flex flex-wrap gap-1.5">
                 {recentSizes.map((size) => (
                   <Chip key={size} active={isSizeActive(size)} onClick={() => applySize(size)}>
+                    <SizeShape size={size} />
                     {size}
                   </Chip>
                 ))}
@@ -605,7 +753,7 @@ export const GenerationPanel = memo(function GenerationPanel({ form, error, mode
         {error ? <Notice variant="error">{error}</Notice> : null}
       </div>
 
-      <div className="sticky bottom-0 z-10 flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <div className="sticky bottom-0 z-10 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <div className="grid w-20 gap-1">
           <Label htmlFor={countId} className="text-xs font-normal text-muted-foreground">
             {t("generation.imageCount")}
