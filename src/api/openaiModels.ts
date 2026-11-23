@@ -1,6 +1,8 @@
 // Fetches the OpenAI-compatible model list from `{baseUrl}/models`.
 // Used by SettingsPanel to populate the Model dropdown on demand.
 
+import { fetchGeminiModels, isGeminiNative } from "./geminiProvider";
+
 export type ModelCapability = "image" | "non-image";
 
 const IMAGE_MODEL_LABEL = "Image";
@@ -73,6 +75,13 @@ export async function fetchModels(params: FetchModelsParams): Promise<ModelInfo[
 
   if (!baseUrl.trim()) {
     throw new Error("API Base URL is required to fetch models.");
+  }
+
+  if (isGeminiNative(baseUrl)) {
+    const ids = await fetchGeminiModels(apiKey, baseUrl, signal);
+    return ids
+      .map((id) => ({ id, ...classifyModel(id) }))
+      .sort((a, b) => Number(b.isImageModel) - Number(a.isImageModel) || a.id.localeCompare(b.id));
   }
 
   const endpoint = `${baseUrl.trim().replace(/\/$/, "")}/models`;

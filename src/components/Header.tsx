@@ -10,6 +10,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ProjectMenu } from "./ProjectMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface HeaderProps {
@@ -42,6 +43,7 @@ export function Header({ baseUrl, model, isConnected, onOpenSettings }: HeaderPr
         </a>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <ProjectMenu />
           <Button
             variant="outline"
             size="sm"

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Eye, EyeOff, Loader2, RefreshCw, RotateCcw } from "lucide-react";
+import { isGeminiNative } from "../api/geminiProvider";
 import { fetchModels, type ModelCapability, type ModelInfo } from "../api/openaiModels";
 import { toFriendlyError } from "../lib/errors";
 import type { AppSettings, ImageResponseFormat } from "../types";
+import { BackupSection } from "./BackupSection";
 import { Notice } from "./Notice";
 import { Field } from "./Field";
 import { ModelPicker, type ModelOption } from "./ModelPicker";
@@ -42,6 +44,27 @@ const PROVIDER_PRESETS: Array<{
       responseFormat: "url",
     },
   },
+  {
+    name: "Google Gemini",
+    descriptionKey: "settings.presets.gemini.description",
+    settings: {
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      model: "gemini-2.5-flash-image",
+      visionModel: "gemini-2.5-flash",
+      responseFormat: "b64_json",
+    },
+  },
+];
+
+// Native Gemini API models. The picker also accepts any custom id, or fetch the list from your key.
+const GEMINI_IMAGE_MODEL_PRESETS: ModelOption[] = [
+  { id: "gemini-3-pro-image-preview", note: "best quality" },
+  { id: "gemini-2.5-flash-image", note: "fast" },
+];
+const GEMINI_VISION_MODEL_PRESETS: ModelOption[] = [
+  { id: "gemini-2.5-pro" },
+  { id: "gemini-2.5-flash" },
+  { id: "gemini-2.5-flash-lite", note: "cheapest" },
 ];
 
 // OpenAI Images API models (developers.openai.com, Nov 2026). Anything else goes through "Custom model".
@@ -297,7 +320,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                 id="settings-image-model"
                 value={settings.model}
                 onChange={(model) => onChange({ model })}
-                presets={IMAGE_MODEL_PRESETS}
+                presets={isGeminiNative(settings.baseUrl) ? GEMINI_IMAGE_MODEL_PRESETS : IMAGE_MODEL_PRESETS}
                 fetched={fetchedOptions(filteredModels)}
                 labels={pickerLabels}
               />
@@ -339,7 +362,7 @@ export const SettingsPanel = memo(function SettingsPanel({
                 id="settings-vision-model"
                 value={settings.visionModel}
                 onChange={(visionModel) => onChange({ visionModel })}
-                presets={VISION_MODEL_PRESETS}
+                presets={isGeminiNative(settings.baseUrl) ? GEMINI_VISION_MODEL_PRESETS : VISION_MODEL_PRESETS}
                 fetched={fetchedOptions(modelsState.list)}
                 labels={pickerLabels}
               />
@@ -376,6 +399,8 @@ export const SettingsPanel = memo(function SettingsPanel({
           </div>
 
           <Notice>{t("notice.cors")}</Notice>
+
+          <BackupSection />
         </div>
 
         <SheetFooter className="flex-row justify-between gap-2 border-t px-6 py-4 sm:justify-between">

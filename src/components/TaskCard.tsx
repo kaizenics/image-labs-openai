@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Check,
   CircleStop,
+  ClipboardCopy,
   Copy,
   Download,
   FileDown,
@@ -14,11 +15,13 @@ import {
   RotateCcw,
   ScanText,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   Bug,
   Wand2,
 } from "lucide-react";
-import { copyText, downloadImage, downloadText } from "../lib/download";
+import { toast } from "sonner";
+import { copyImage, copyText, downloadImage, downloadText } from "../lib/download";
 import { formatCostUsd } from "../lib/pricing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +49,7 @@ interface TaskCardProps {
   onClearImage: (id: string) => void;
   onReuseParams: (task: ImageTask) => void;
   onEditImage: (imageUrl: string) => void;
+  onUseAsPrompt: (text: string) => void;
 }
 
 export const statusStyles: Record<ImageTask["status"], string> = {
@@ -154,7 +158,7 @@ function MetaItem({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export const TaskCard = memo(function TaskCard({ task, onPreview, onRetry, onCancel, onRemove, onClearImage, onReuseParams, onEditImage }: TaskCardProps) {
+export const TaskCard = memo(function TaskCard({ task, onPreview, onRetry, onCancel, onRemove, onClearImage, onReuseParams, onEditImage, onUseAsPrompt }: TaskCardProps) {
   const { t } = useTranslation();
   const [messageKey, setMessageKey] = useState<string>("");
   const isVisionTask = task.mode === "vision";
@@ -173,6 +177,19 @@ export const TaskCard = memo(function TaskCard({ task, onPreview, onRetry, onCan
 
     await copyText(task.imageUrl);
     setMessageKey("tasks.messages.imageUrlCopied");
+  }
+
+  async function handleCopyImageFile() {
+    if (!task.imageUrl) {
+      return;
+    }
+
+    try {
+      await copyImage(task.imageUrl);
+      setMessageKey("tasks.messages.imageCopied");
+    } catch {
+      toast.error(t("tasks.messages.imageCopyFailed"));
+    }
   }
 
   async function handleCopyPrompt() {
@@ -407,10 +424,20 @@ export const TaskCard = memo(function TaskCard({ task, onPreview, onRetry, onCan
               <IconAction label={t("tasks.actions.download")} icon={Download} onClick={() => void handleDownload()} />
             ) : null}
             {!isVisionTask && hasImage ? (
+              <IconAction label={t("tasks.actions.copyImage")} icon={ClipboardCopy} onClick={() => void handleCopyImageFile()} />
+            ) : null}
+            {!isVisionTask && hasImage ? (
               <IconAction
                 label={t("tasks.actions.editImage")}
                 icon={Wand2}
                 onClick={() => task.imageUrl && onEditImage(task.imageUrl)}
+              />
+            ) : null}
+            {isVisionTask && hasOutputText ? (
+              <IconAction
+                label={t("tasks.actions.useAsPrompt")}
+                icon={Sparkles}
+                onClick={() => task.outputText && onUseAsPrompt(task.outputText)}
               />
             ) : null}
             {!isVisionTask ? (

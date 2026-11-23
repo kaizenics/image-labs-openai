@@ -155,7 +155,7 @@ export const VisionPanel = memo(function VisionPanel({ form, error, visionModel,
         {error ? <Notice variant="error">{error}</Notice> : null}
       </div>
 
-      <div className="sticky bottom-0 z-10 flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <div className="sticky bottom-0 z-10 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <Button
           type="submit"
           variant="brand"

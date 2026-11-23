@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { ImagePlus, X } from "lucide-react";
 import type { InputImageFile } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,20 @@ export function ImageDropzone({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const hasImages = images.length > 0;
+  const onAddRef = useRef(onAdd);
+  onAddRef.current = onAdd;
+
+  // Ctrl+V of a screenshot/copied image anywhere on the page. Inactive tabs unmount, so only one dropzone listens.
+  useEffect(() => {
+    function onPaste(event: ClipboardEvent) {
+      const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+      if (files.length === 0) return;
+      event.preventDefault();
+      void onAddRef.current(files);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, []);
 
   function onFileInputChange(event: ChangeEvent<HTMLInputElement>) {
     if (event.target.files && event.target.files.length > 0) {

@@ -7,7 +7,7 @@ import {
   modelRequiresStrictPng,
   prepareInputImage,
 } from "../lib/imageInput";
-import { parsePromptList, readPromptListFile } from "../lib/promptList";
+import { MAX_EXPANDED_PROMPTS, parsePromptList, readPromptListFile } from "../lib/promptList";
 import { batchProgress, tasksOfBatch } from "../lib/batchExport";
 import { Notice } from "./Notice";
 import { ImageDropzone } from "./ImageDropzone";
@@ -198,11 +198,23 @@ export const BatchGenerationPanel = memo(function BatchGenerationPanel({
         {/* Prompt list */}
         <Field
           label={t("batch.prompts.title")}
-          hint={t("batch.prompts.parsedSummary", {
-            count: parsed.prompts.length,
-            comments: parsed.commentLines,
-            empty: parsed.emptyLines,
-          })}
+          hint={
+            parsed.tooMany
+              ? t("batch.prompts.tooMany", { max: MAX_EXPANDED_PROMPTS })
+              : [
+                  t("batch.prompts.parsedSummary", {
+                    count: parsed.prompts.length,
+                    comments: parsed.commentLines,
+                    empty: parsed.emptyLines,
+                  }),
+                  parsed.prompts.length !== parsed.templateLines
+                    ? t("batch.prompts.expandedSummary", { lines: parsed.templateLines, count: parsed.prompts.length })
+                    : "",
+                  t("batch.prompts.templateTip"),
+                ]
+                  .filter(Boolean)
+                  .join(" ")
+          }
           action={
             <div className="flex items-center gap-1">
               <Button
@@ -317,12 +329,12 @@ export const BatchGenerationPanel = memo(function BatchGenerationPanel({
         </p>
       </div>
 
-      <div className="sticky bottom-0 z-10 flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <div className="sticky bottom-0 z-10 max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] flex items-end gap-2 border-t bg-card/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <Button
           type="submit"
           variant="brand"
           className="h-9 flex-1"
-          disabled={parsed.prompts.length === 0}
+          disabled={parsed.prompts.length === 0 || parsed.tooMany}
           aria-keyshortcuts="Control+Enter Meta+Enter"
         >
           {isEditMode ? <Wand2 aria-hidden="true" /> : <Sparkles aria-hidden="true" />}

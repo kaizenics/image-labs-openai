@@ -1,11 +1,20 @@
 import type { AppSettings, BatchFormState, GenerateFormState, ImageTask, ImageTaskStatus, VisionFormState } from "../types";
+import { PROJECT_KEYS, scopedKey } from "./projects";
 import { reportStorageIssue } from "./storageHealth";
 
 
 export const STORAGE_KEYS = {
+  // Shared by every project.
   settings: "openai-image-webui:settings",
-  tasks: "openai-image-webui:tasks",
-  batchPrompts: "openai-image-webui:batch-prompts",
+  dailyBudget: "openai-image-webui:daily-budget",
+  // Per project (see lib/projects.ts).
+  tasks: scopedKey(PROJECT_KEYS.tasks),
+  batchPrompts: scopedKey(PROJECT_KEYS.batchPrompts),
+  currentBatchId: scopedKey(PROJECT_KEYS.currentBatchId),
+  promptHistory: scopedKey(PROJECT_KEYS.promptHistory),
+  promptPresets: scopedKey(PROJECT_KEYS.promptPresets),
+  imageTags: scopedKey(PROJECT_KEYS.imageTags),
+  recentSizes: scopedKey(PROJECT_KEYS.recentSizes),
 } as const;
 
 const PERSISTED_TASKS_LIMIT = 500;

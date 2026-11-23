@@ -5,8 +5,13 @@ import { toInputImageFile } from "../lib/imageInput";
 import { copyText, downloadImage } from "../lib/download";
 import { downloadLibraryZip } from "../lib/libraryExport";
 import type { ImageCacheStats, ReuseParamsPayload } from "../types";
+import { useImageTags } from "../hooks/useImageTags";
+import { Chip } from "./Chip";
+import { CompareDialog, type CompareImage } from "./CompareDialog";
 import { ImageCacheSummary } from "./ImageCacheSummary";
 import { Notice } from "./Notice";
+import { TagMenu } from "./TagMenu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Columns2,
   Copy,
   Download,
   Images,
@@ -39,6 +45,7 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
+  Search,
   Trash2,
 } from "lucide-react";
 
@@ -114,7 +121,21 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
   const [marquee, setMarquee] = useState<MarqueeState | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<LibraryImage | null>(null);
-  const hasItems = items.length > 0;
+  const [query, setQuery] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [compareImages, setCompareImages] = useState<[CompareImage, CompareImage] | null>(null);
+  const { tagsById, allTags, toggleTag, forgetImages } = useImageTags();
+  // Filters apply to the images loaded so far; "Load more" pulls in older ones.
+  const visibleItems = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter((item) => {
+      const tags = tagsById[item.id] ?? [];
+      if (activeTag && !tags.includes(activeTag)) return false;
+      if (!needle) return true;
+      return [item.prompt, item.model, ...tags].some((value) => value?.toLowerCase().includes(needle));
+    });
+  }, [items, query, activeTag, tagsById]);
+  const hasItems = visibleItems.length > 0;
   const objectUrlsRef = useRef(new Set<string>());
   const virtualGridRef = useRef<HTMLDivElement | null>(null);
   const lastClickedIdRef = useRef<string | null>(null);
@@ -287,7 +308,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
 
   const virtualGrid = useMemo(() => {
     const columnCount = getColumnCount(gridWidth);
-    const rowCount = Math.ceil(items.length / columnCount);
+    const rowCount = Math.ceil(visibleItems.length / columnCount);
     const rowStride = VIRTUAL_ROW_HEIGHT + GRID_GAP;
     const gridScrollTop = viewport.scrollTop - viewport.gridTop;
     const gridScrollBottom = gridScrollTop + viewport.height;
@@ -301,7 +322,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
       const startIndex = rowIndex * columnCount;
       return {
         rowIndex,
-        items: items.slice(startIndex, startIndex + columnCount),
+        items: visibleItems.slice(startIndex, startIndex + columnCount),
       };
     });
 
@@ -311,7 +332,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
       rows,
       totalHeight: rowCount > 0 ? rowCount * VIRTUAL_ROW_HEIGHT + (rowCount - 1) * GRID_GAP : 0,
     };
-  }, [gridWidth, items, viewport]);
+  }, [gridWidth, visibleItems, viewport]);
 
   const layout = useMemo(() => {
     const columnCount = getColumnCount(gridWidth);
@@ -334,7 +355,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
       const hits = new Set<string>();
       const colStride = columnWidth + GRID_GAP;
       const rowStride = VIRTUAL_ROW_HEIGHT + GRID_GAP;
-      for (let i = 0; i < items.length; i += 1) {
+      for (let i = 0; i < visibleItems.length; i += 1) {
         const row = Math.floor(i / columnCount);
         const col = i % columnCount;
         const box = {
@@ -344,12 +365,12 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
           bottom: row * rowStride + VIRTUAL_ROW_HEIGHT,
         };
         if (rectsIntersect(r, box)) {
-          hits.add(items[i].id);
+          hits.add(visibleItems[i].id);
         }
       }
       return hits;
     },
-    [items, layout],
+    [visibleItems, layout],
   );
 
   const previewSelection = useMemo<Set<string> | null>(() => {
@@ -494,7 +515,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
 
   function toggleSelectOne(id: string, e: React.MouseEvent) {
     if (e.shiftKey && lastClickedIdRef.current && lastClickedIdRef.current !== id) {
-      const ids = items.map((i) => i.id);
+      const ids = visibleItems.map((i) => i.id);
       const a = ids.indexOf(lastClickedIdRef.current);
       const b = ids.indexOf(id);
       if (a >= 0 && b >= 0) {
@@ -537,7 +558,28 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
   }
 
   function selectAllLoaded() {
-    setSelectedIds(new Set(items.map((i) => i.id)));
+    setSelectedIds(new Set(visibleItems.map((i) => i.id)));
+  }
+
+  const selectedItems = items.filter((i) => selectedIds.has(i.id));
+  // A tag shows as applied only when every selected image has it.
+  const appliedTags = new Set(
+    allTags.filter((tag) => selectedItems.length > 0 && selectedItems.every((i) => tagsById[i.id]?.includes(tag))),
+  );
+
+  function openCompare() {
+    if (selectedItems.length !== 2) return;
+    const [a, b] = selectedItems.map((item) => ({
+      url: item.objectUrl,
+      caption: [item.model, item.generationSize].filter(Boolean).join(" · ") || t("library.unknownModel"),
+      alt: item.prompt || t("library.unknownPrompt"),
+    }));
+    setCompareImages([a, b]);
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setActiveTag(null);
   }
 
   function clearSelection() {
@@ -594,13 +636,14 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
   }
 
   const handlePreview = useCallback(
-    (imageUrl: string) => onPreview(imageUrl, items.map((item) => item.objectUrl)),
-    [items, onPreview],
+    (imageUrl: string) => onPreview(imageUrl, visibleItems.map((item) => item.objectUrl)),
+    [visibleItems, onPreview],
   );
 
   // Confirmation happens in the AlertDialog below; this runs once the user confirms.
   function handleDelete(item: LibraryImage) {
     revokeObjectUrl(item.objectUrl);
+    forgetImages([item.id]);
     onDeleteImage(item.id);
     setItems((current) => current.filter((candidate) => candidate.id !== item.id));
     setMessageKey("library.messages.imageDeleted");
@@ -611,6 +654,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
 
   function handleClearAll() {
     clearObjectUrls();
+    forgetImages(items.map((item) => item.id));
     setItems([]);
     setHasMore(false);
     onClearImageCache();
@@ -662,6 +706,23 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
               {t("library.selection.clear")}
             </Button>
             <div className="ml-auto flex items-center gap-2">
+              <TagMenu
+                allTags={allTags}
+                appliedTags={appliedTags}
+                disabled={selectedIds.size === 0}
+                onToggle={(tag) => toggleTag([...selectedIds], tag)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                disabled={selectedIds.size !== 2}
+                title={selectedIds.size === 2 ? undefined : t("library.compare.needTwo")}
+                onClick={openCompare}
+              >
+                <Columns2 aria-hidden="true" />
+                {t("library.compare.button")}
+              </Button>
               <Button
                 variant="brand"
                 size="sm"
@@ -684,6 +745,31 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
             </div>
           </div>
           <p className="text-xs text-muted-foreground">{t("library.selection.hint")}</p>
+        </div>
+      ) : null}
+
+      {items.length > 0 ? (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              className="h-9 pl-8"
+              value={query}
+              placeholder={t("library.search.placeholder")}
+              aria-label={t("library.search.label")}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          {allTags.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {allTags.map((tag) => (
+                <Chip key={tag} active={activeTag === tag} onClick={() => setActiveTag((current) => (current === tag ? null : tag))}>
+                  {tag}
+                </Chip>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -726,6 +812,13 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
             <p className="max-w-sm text-sm text-muted-foreground">{t("library.empty")}</p>
           </div>
         )
+      ) : visibleItems.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center">
+          <p className="max-w-sm text-sm text-muted-foreground">{t("library.search.noMatches")}</p>
+          <Button variant="outline" size="sm" onClick={clearFilters}>
+            {t("library.search.clear")}
+          </Button>
+        </div>
       ) : (
         <>
           <div
@@ -751,6 +844,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
                     <ImageCard
                       key={item.id}
                       item={item}
+                      tags={tagsById[item.id]}
                       isSelected={isSelected}
                       selectionMode={selectionMode}
                       t={t}
@@ -790,6 +884,8 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
         </>
       )}
 
+      <CompareDialog images={compareImages} onClose={() => setCompareImages(null)} />
+
       <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -817,6 +913,7 @@ export const ImageLibrary = memo(function ImageLibrary({ stats, onPreview, onDel
 
 interface ImageCardProps {
   item: LibraryImage;
+  tags?: string[];
   isSelected: boolean;
   selectionMode: boolean;
   t: (key: string, options?: any) => string;
@@ -831,6 +928,7 @@ interface ImageCardProps {
 
 const ImageCard = memo(function ImageCard({
   item,
+  tags,
   isSelected,
   selectionMode,
   t,
@@ -940,6 +1038,11 @@ const ImageCard = memo(function ImageCard({
           <dt className="sr-only">{t("tasks.fields.size")}</dt>
           <dd className="shrink-0">{item.generationSize || "-"}</dd>
         </dl>
+        {tags?.length ? (
+          <p className="truncate text-xs text-muted-foreground" title={tags.join(", ")}>
+            {tags.map((tag) => `#${tag}`).join(" ")}
+          </p>
+        ) : null}
         <div className="flex items-center justify-between gap-2 font-mono text-xs tabular-nums text-muted-foreground">
           <span className="min-w-0 truncate" title={new Date(item.taskCreatedAt || item.cachedAt).toLocaleString()}>
             {new Date(item.taskCreatedAt || item.cachedAt).toLocaleDateString()}
